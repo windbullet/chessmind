@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>ChessMind smoke test</title>
+    <style>
+      body { font-family: monospace; background: #0b0e15; color: #cfd6e4; padding: 16px; }
+      .ok { color: #4ade80; }
+      .bad { color: #f4526d; }
+      pre { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h3>ChessMind smoke test</h3>
+    <p>开发服务器专用：<code>http://127.0.0.1:1420/smoke.html</code>（生产包不包含此页）。</p>
+    <pre id="out"></pre>
+    <iframe id="frame" src="/" style="width: 1400px; height: 900px; border: 0"></iframe>
+    <script>
+      const out = document.getElementById('out');
+      const log = (msg, ok) => {
+        const line = document.createElement('div');
+        line.className = ok === undefined ? '' : ok ? 'ok' : 'bad';
+        line.textContent = msg;
+        out.appendChild(line);
+      };
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const waitFor = async (fn, timeout = 8000) => {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+          const value = fn();
+          if (value) return value;
+          await wait(50);
+        }
+        return null;
+      };
+
+      const frame = document.getElementById('frame');
+      frame.addEventListener('load', async () => {
+        try {
+          const win = frame.contentWindow;
+          const api = await waitFor(() => win.__CHESSMIND__);
+          if (!api) {
+            log('FAIL: debug bridge missing (只在 npm run dev 下可用)', false);
+            return;
+          }
+          log('debug bridge ready', true);
+          const game = api.game;
+          await wait(300);
+
+          // 1. two local players: a full move round must be recorded
+          game.getState().startGame({ players: { w: 'human', b: 'human' }, orientation: 'w' });
+          await wait(300);
+          const moved = game.getState().humanMove('e2', 'e4');
+          const replied = game.getState().humanMove('e7', 'e5');
+          log(`local game moves: ${game.getState().moveLog.map((m) => m.san).join(' ')}`, moved && replied);
+          log(`turn is white: ${game.getState().turn}`, game.getState().turn === 'w');
+
+          // 2. pause + undo
+          game.getState().togglePause();
+          log(`paused mode=${game.getState().mode}`, game.getState().mode === 'paused');
+          const before = game.getState().moveLog.length;
+          game.getState().undo();
+          log(`undo ${before} -> ${game.getState().moveLog.length}`, game.getState().moveLog.length < before);
+
+          // 3. setup editor: open blank, place pieces, validate, start
+          game.getState().openSetup({ source: 'new', blank: true });
+          log(`setup mode=${game.getState().mode}`, game.getState().mode === 'setup');
+          const st = game.getState();
+          st.setSetupPiece('e1', { type: 'k', color: 'w' });
+          st.setSetupPiece('e8', { type: 'k', color: 'b' });
+          st.setSetupPiece('d4', { type: 'q', color: 'w' });
+          st.setSetupPiece('d5', { type: 'p', color: 'b' });
+          st.setSetupPiece('a1', { type: 'r', color: 'w' });
+          log(`placed pieces => fen ${game.getState().setupDraft ? 'ok' : 'missing'}`, Boolean(game.getState().setupDraft));
+          log(`validation ok=${game.getState().setupValidation?.ok}`, game.getState().setupValidation?.ok === true);
+          const applied = game.getState().applySetup();
+          log(`applySetup -> ${applied}, mode=${game.getState().mode}`, applied === true);
+          log(`custom fen: ${game.getState().fen}`);
+
+          // 4. delete a piece midgame then re-apply
+          game.getState().openSetup({ source: 'midgame' });
+          game.getState().setSetupPiece('d5', null);
+          log(`after delete fen: ${game.getState().setupDraft ? 'ok' : 'missing'}`);
+          log(`midgame validation ok=${game.getState().setupValidation?.ok}`, game.getState().setupValidation?.ok === true);
+          game.getState().applySetup();
+          log(`resumed mode=${game.getState().mode} log=${game.getState().moveLog.length}`, game.getState().mode === 'playing');
+
+          // 5. invalid setup must be rejected
+          game.getState().openSetup({ source: 'new', blank: true });
+          game.getState().setSetupPiece('e1', { type: 'k', color: 'w' });
+          log(`invalid (missing black king) ok=${game.getState().setupValidation?.ok}`, game.getState().setupValidation?.ok === false);
+          log(`applySetup blocked=${game.getState().applySetup() === false}`, game.getState().applySetup() === false);
+          game.getState().cancelSetup();
+
+          // 6. cancel restores the previous game's sides
+          game.getState().startGame({ players: { w: 'human', b: 'human' }, orientation: 'w' });
+          await wait(200);
+          game.getState().openSetup({
+            source: 'new',
+            blank: true,
+            players: { w: 'ai', b: 'human' },
+            orientation: 'b',
+          });
+          game.getState().cancelSetup();
+          const restored = game.getState();
+          log(
+            `cancel restores sides ${JSON.stringify(restored.players)} ${restored.orientation}`,
+            restored.players.w === 'human' && restored.players.b === 'human' && restored.orientation === 'w',
+          );
+
+          // 7. the random-move escape hatch works from the paused state
+          game.getState().startGame({ players: { w: 'ai', b: 'human' }, orientation: 'w' });
+          game.getState().abortAi();
+          game.setState({ mode: 'paused', aiError: '模拟失败' });
+          const plies = game.getState().moveLog.length;
+          game.getState().playRandomMove();
+          log(
+            `paused random move ${plies} -> ${game.getState().moveLog.length}`,
+            game.getState().moveLog.length === plies + 1 && game.getState().mode === 'playing',
+          );
+          game.getState().abortAi();
+
+          // 8. flip
+          const o1 = game.getState().orientation;
+          game.getState().flip();
+          log(`flip ${o1} -> ${game.getState().orientation}`, o1 !== game.getState().orientation);
+
+          log('DONE', true);
+          window.__DONE__ = true;
+        } catch (error) {
+          log('ERROR ' + error.message, false);
+          window.__DONE__ = true;
+        }
+      });
+    </script>
+  </body>
+</html>

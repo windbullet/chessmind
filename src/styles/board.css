@@ -1,0 +1,382 @@
+/* The card is a size container, so the board always fits the smaller dimension. */
+.board-shell {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
+}
+
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.board[data-board='midnight'] {
+  --sq-light: #8299c0;
+  --sq-dark: #4d648c;
+  --coord-light: rgba(255, 255, 255, 0.62);
+  --coord-dark: rgba(255, 255, 255, 0.4);
+  --hint-dot: rgba(8, 12, 20, 0.34);
+  --hint-edge: rgba(255, 255, 255, 0.22);
+  --hint-ring: rgba(8, 12, 20, 0.3);
+  /* Origin of the last move: a light wash. Destination: a slightly deeper one. */
+  --last-from: rgba(198, 226, 255, 0.34);
+  --last-to: rgba(52, 104, 178, 0.44);
+}
+
+.board[data-board='forest'] {
+  --sq-light: #a8c29b;
+  --sq-dark: #63825f;
+  --coord-light: rgba(255, 255, 255, 0.72);
+  --coord-dark: rgba(255, 255, 255, 0.5);
+  --hint-dot: rgba(10, 22, 14, 0.34);
+  --hint-edge: rgba(255, 255, 255, 0.24);
+  --hint-ring: rgba(10, 22, 14, 0.32);
+  --last-from: rgba(232, 250, 206, 0.34);
+  --last-to: rgba(72, 122, 52, 0.46);
+}
+
+.board[data-board='walnut'] {
+  --sq-light: #d8b184;
+  --sq-dark: #a4704a;
+  --coord-light: rgba(40, 24, 12, 0.62);
+  --coord-dark: rgba(255, 244, 230, 0.66);
+  --hint-dot: rgba(46, 26, 12, 0.34);
+  --hint-edge: rgba(255, 255, 255, 0.3);
+  --hint-ring: rgba(46, 26, 12, 0.32);
+  --last-from: rgba(255, 238, 204, 0.44);
+  --last-to: rgba(176, 104, 44, 0.46);
+}
+
+.board[data-board='slate'] {
+  --sq-light: #b3bccd;
+  --sq-dark: #79859a;
+  --coord-light: rgba(20, 26, 38, 0.6);
+  --coord-dark: rgba(255, 255, 255, 0.62);
+  --hint-dot: rgba(14, 20, 30, 0.34);
+  --hint-edge: rgba(255, 255, 255, 0.26);
+  --hint-ring: rgba(14, 20, 30, 0.3);
+  --last-from: rgba(226, 236, 255, 0.36);
+  --last-to: rgba(78, 102, 142, 0.46);
+}
+
+.board--editing {
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.45),
+    0 0 0 2px rgba(76, 201, 240, 0.5),
+    0 0 0 8px rgba(76, 201, 240, 0.08);
+}
+
+.sq {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.board--interactive .sq {
+  cursor: pointer;
+}
+
+.board:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.sq--focus {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  z-index: 2;
+}
+
+.sq--light {
+  background: var(--sq-light);
+}
+
+.sq--dark {
+  background: var(--sq-dark);
+}
+
+/* Last move: the square the piece left gets a light wash, the square it landed
+   on a slightly deeper one, so the direction of the move is readable at a
+   glance. */
+.sq--last-from::before,
+.sq--last-to::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sq--last-from::before {
+  background: var(--last-from);
+}
+
+.sq--last-to::before {
+  background: var(--last-to);
+}
+
+.sq--selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 3px rgba(76, 201, 240, 0.95);
+  pointer-events: none;
+}
+
+.sq--check {
+  background-image: radial-gradient(circle at 50% 50%, rgba(244, 82, 109, 0.85), rgba(244, 82, 109, 0.12) 68%);
+}
+
+/* chess.com-style move hints: a soft dot on empty squares, a ring around a
+   capturable piece. Both stay visible on light and dark squares. */
+.sq--target::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--hint-dot);
+  box-shadow: 0 0 0 1px var(--hint-edge);
+  pointer-events: none;
+  animation: hint-in 0.12s ease;
+}
+
+.sq--capture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* Translucent ring near the square edge, drawn over the piece like chess.com.
+     A gradient scales with the square; a fixed border width would not. */
+  background: radial-gradient(
+    circle closest-side,
+    transparent 82%,
+    var(--hint-ring) 84%,
+    var(--hint-ring) 97%,
+    transparent 99%
+  );
+  pointer-events: none;
+  animation: hint-in 0.12s ease;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+}
+
+.sq--drop {
+  animation: drop-in 0.22s ease;
+}
+
+@keyframes drop-in {
+  from {
+    transform: scale(1.12);
+    opacity: 0.6;
+  }
+}
+
+.sq-coord {
+  position: absolute;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.sq--light .sq-coord {
+  color: var(--coord-light);
+}
+
+.sq--dark .sq-coord {
+  color: var(--coord-dark);
+}
+
+.sq-coord--file {
+  right: 4px;
+  bottom: 2px;
+}
+
+.sq-coord--rank {
+  left: 4px;
+  top: 2px;
+}
+
+.piece {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.32));
+}
+
+/* Cburnett colours: white pieces are cream with a dark outline; black pieces are
+   charcoal with a light inner highlight so they stay readable on dark squares. */
+.piece--w {
+  --fill: #f7f5ef;
+  --line: #2b2c33;
+  --highlight: #c8c6bd;
+}
+
+.piece--b {
+  --fill: #1b1c23;
+  --line: #111218;
+  --highlight: #e9e5db;
+}
+
+.sq-piece {
+  position: absolute;
+  inset: 5%;
+  transition: transform 0.12s ease;
+}
+
+.board--interactive .sq-piece {
+  cursor: grab;
+}
+
+/* A piece that just moved slides in from its previous square. The offset is
+   measured in px by the component and applied as an inline transform, so the
+   piece travels over its neighbours instead of being clipped by the square. */
+.sq-piece[data-sliding='true'] {
+  z-index: 3;
+  pointer-events: none;
+}
+
+.board--interactive .sq-piece:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.sq-piece:active {
+  cursor: grabbing;
+}
+
+.sq-piece[data-dragging='true'] {
+  opacity: 0.35;
+}
+
+.sq--editing .sq-piece {
+  cursor: grab;
+}
+.board-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 11, 18, 0.42);
+  backdrop-filter: blur(1.5px);
+  z-index: 5;
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.board-overlay[data-visible='false'] {
+  display: none;
+}
+
+.board-overlay-card {
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-soft);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(76, 201, 240, 0.25);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.promo-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 9, 15, 0.55);
+  backdrop-filter: blur(3px);
+  border-radius: 14px;
+}
+
+.promo-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.promo-title {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.promo-options {
+  display: flex;
+  gap: 8px;
+}
+
+.promo-option {
+  width: 54px;
+  height: 54px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.promo-option:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.piece-glyph {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 8%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='light'] .piece-glyph {
+  background: rgba(16, 24, 40, 0.05);
+  border-color: rgba(16, 24, 40, 0.08);
+}
+

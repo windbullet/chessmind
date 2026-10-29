@@ -1,0 +1,43 @@
+[package]
+name = "chessmind"
+version = "1.0.0"
+description = "ChessMind - play chess against any LLM"
+authors = ["windbullet"]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/windbullet/chessmind"
+
+[lib]
+name = "chessmind_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+    "charset",
+    "http2",
+] }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+futures-util = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI: encrypt the settings file (which holds API keys) for the current user.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

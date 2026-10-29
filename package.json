@@ -1,0 +1,38 @@
+{
+  "name": "chessmind",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ChessMind — play chess against any LLM through OpenAI, Anthropic or Gemini compatible APIs",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tauri": "tauri",
+    "dist": "tauri build && node scripts/package-release.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "chess.js": "1.4.0",
+    "lucide-react": "1.61.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zustand": "5.0.16"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

@@ -28,6 +28,8 @@
 | `ChessMind-1.0.0-win-x64-setup.exe` | 一键安装包 |
 | `ChessMind-1.0.0-win-x64.zip` | 免安装压缩包，解压即用 |
 
+各版本的改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 每个文件都配了 `.sha256`，下载后可校验：
 
 ```powershell

@@ -12,7 +12,7 @@ Play chess against large language models. Fill in the endpoint URL, API key and 
 
 ## Features
 
-- **Compatible APIs**: [OI] Chat Completions, [OI] Responses, Anthropic Messages, native Gemini API.
+- **Compatible APIs**: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, native Gemini API.
 - **Four game modes**: play White, play Black, AI vs AI, local two-player.
 - **Live reasoning**: shows the model's chain of thought when the provider returns it, with per-move latency, HTTP status and token usage.
 - **Position editor**: set up a position before the game or edit it mid-game, with FEN import and export.
@@ -27,6 +27,8 @@ Get either build from [Releases](../../releases); both are identical in features
 | --- | --- |
 | `ChessMind-1.0.0-win-x64-setup.exe` | One-click installer |
 | `ChessMind-1.0.0-win-x64.zip` | Portable archive, unpack and run |
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 Each file ships with a matching `.sha256`:
 
@@ -44,8 +46,8 @@ Settings live in `%APPDATA%\com.chessmind.app\settings.json`, encrypted with Win
 
 | Format | Endpoint | Reasoning source |
 | --- | --- | --- |
-| [OI] Chat Completions | `{base}/chat/completions` | model-dependent |
-| [OI] Responses | `{base}/responses` | reasoning summary |
+| OpenAI Chat Completions | `{base}/chat/completions` | model-dependent |
+| OpenAI Responses | `{base}/responses` | reasoning summary |
 | Anthropic Messages | `{base}/messages` | thinking |
 | Gemini | `{base}/models/{model}:streamGenerateContent` | thought |
 
@@ -53,7 +55,7 @@ Settings live in `%APPDATA%\com.chessmind.app\settings.json`, encrypted with Win
 
 | Service | Format | Base URL | Model |
 | --- | --- | --- | --- |
-| [OI] | Responses | `https://api.openai.com/v1` | `gpt-5` |
+| OpenAI | Responses | `https://api.openai.com/v1` | `gpt-5` |
 | Anthropic | Anthropic Messages | `https://api.anthropic.com/v1` | `` |
 | DeepSeek | Chat Completions | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | OpenRouter | Chat Completions | `https://openrouter.ai/api/v1` | any `vendor/model` |

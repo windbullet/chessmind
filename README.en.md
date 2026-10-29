@@ -2,7 +2,7 @@
 
 <sub>[简体中文](README.md) · [English](README.en.md)</sub>
 
-Play chess against large language models. Fill in the endpoint URL, API key and model name, and the game can start.
+Play chess against large language models.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d4.svg)](#download)
@@ -17,7 +17,7 @@ Play chess against large language models. Fill in the endpoint URL, API key and 
 - **Live reasoning**: shows the model's chain of thought when the provider returns it, with per-move latency, HTTP status and token usage.
 - **Position editor**: set up a position before the game or edit it mid-game, with FEN import and export.
 - **Multiple profiles**: save several API profiles; in AI vs AI each side can run a different model.
-- **Full game control**: takeback, pause, flip board, last-move highlight.
+- **Full game control**: takeback, pause, flip board.
 
 ## Download
 
@@ -105,11 +105,6 @@ With the dev server running, visit `http://127.0.0.1:1420/smoke.html` for an end
 - **Strict contract plus three-stage parsing**: the model replies with JSON; parsing tries the fields, then UCI coordinates, then SAN tokens; if nothing is legal, the reason and the legal moves are sent again.
 - **Race protection**: takeback, pause, end and position edits invalidate in-flight requests immediately, so a stale move never lands on a new position.
 - **Optional context**: continuous context lets the model follow through on its own plan and hit the provider's prefix cache; per-move context re-reasons from the current position every time.
-
-## Known limitations
-
-- Windows x64 only.
-- Chess only: no evaluation bar or engine analysis.
 
 ## Credits
 

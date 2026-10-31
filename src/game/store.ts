@@ -4,8 +4,29 @@ import { requestAiMove } from '../ai/coordinator';
 import { appendExchange, truncateForPly } from '../ai/context';
 import type { Exchange } from '../ai/context';
 import type { AttemptRecord, Usage } from '../ai/types';
-import { useSettings, profileFor } from '../settings';
-import { buildChess, findLegalMove, gameResultOf, uciOf } from './engine';
+import {
+  buildCoachReviewPrompt,
+  buildCoachSummaryPrompt,
+  buildCoachSystemPrompt,
+  buildHintPrompt,
+  buildHintSystemPrompt,
+  buildSummarySystemPrompt,
+  parseCoachReview,
+  parseHint,
+  parseSummary,
+} from '../coach/prompt';
+import { requestCoach } from '../coach/request';
+import { DEFAULT_COACH } from '../coach/types';
+import type { CoachConfig } from '../coach/types';
+import { useSettings, coachProfileFor, profileFor } from '../settings';
+import {
+  buildChess,
+  findLegalMove,
+  gameResultOf,
+  legalMoves,
+  moveLogToSan,
+  uciOf,
+} from './engine';
 import {
   castlingAvailable,
   cloneDraft,
@@ -49,6 +70,71 @@ let exchangesBySide: Record<Side, Exchange[]> = { w: [], b: [] };
 
 function clearExchanges(): void {
   exchangesBySide = { w: [], b: [] };
+}
+
+/* ------------------------------------------------------------------- coach */
+
+/**
+ * One coach card about one position: the verdict on the move that was just
+ * played (or the explanation the engine itself gave for it), the read of the
+ * position, or the suggestion the user asked for.
+ */
+export interface CoachEntry {
+  id: number;
+  kind: 'review' | 'hint';
+  /** Half-moves on the board when the job was queued; used to drop stale entries on undo. */
+  ply: number;
+  number: number;
+  side: Side;
+  /** The move under review, or the suggested move for a hint (null when unusable). */
+  san: string | null;
+  /** Verdict on the move (review), or the reason for the suggestion (hint). */
+  verdict: string | null;
+  /** Read of the position; review entries only. */
+  read: string | null;
+  error: string | null;
+  elapsedMs: number;
+  /** The request behind this card is still queued or in flight. */
+  pending: boolean;
+  /** Which paragraphs this card will end up having, so placeholders are honest. */
+  expects: { verdict: boolean; read: boolean };
+}
+
+export interface CoachSummary {
+  state: 'running' | 'done' | 'failed';
+  text: string | null;
+  error: string | null;
+}
+
+type CoachJob =
+  | {
+      kind: 'review';
+      /** The card this job fills in; created when the request was queued. */
+      entryId: number;
+      afterFen: string;
+      before: { fen: string; moves: string[] } | null;
+      move: { number: number; side: Side; san: string };
+      fields: { review: boolean; position: boolean };
+    }
+  | { kind: 'hint'; entryId: number; fen: string; side: Side; history: string }
+  | { kind: 'summary'; sanLine: string; startFen: string; result: string };
+
+/**
+ * Coach work is a single queue drained one request at a time: it never joins the
+ * move loop, so a slow coach can neither delay nor break an AI turn.
+ */
+let coachQueue: CoachJob[] = [];
+let coachAbort: AbortController | null = null;
+let coachToken = 0;
+let coachEntrySeq = 0;
+let coachDraining = false;
+/** Kind of the job currently on the wire, so a hint can be cancelled alone. */
+let coachRunning: CoachJob['kind'] | null = null;
+/** The side the coach speaks to: the single human, or `null` when both sides are. */
+function studentSideOf(players: { w: Actor; b: Actor }): Side | null {
+  if (players.w === 'human' && players.b !== 'human') return 'w';
+  if (players.b === 'human' && players.w !== 'human') return 'b';
+  return null;
 }
 
 
@@ -107,18 +193,29 @@ interface GameStore {
   setupPast: SetupDraft[];
   setupFuture: SetupDraft[];
   setupReturn: GameSnapshot | null;
-  /** Players/orientation in effect before the setup editor opened. */
-  setupReturnSides: { players: { w: Actor; b: Actor }; orientation: Side } | null;
+  /** Players/orientation/coach in effect before the setup editor opened. */
+  setupReturnSides: {
+    players: { w: Actor; b: Actor };
+    orientation: Side;
+    coach: CoachConfig;
+  } | null;
   setupSource: SetupSource | null;
   toast: Toast | null;
   version: number;
   /** Increments only when a move is actually played, so the board can animate it. */
   moveSeq: number;
+  /** Coach mode of the current game, chosen in the new-game dialog. */
+  coach: CoachConfig;
+  coachLog: CoachEntry[];
+  /** A guidance request is queued or in flight. */
+  hintBusy: boolean;
+  coachSummary: CoachSummary | null;
 
   startGame(opts: {
     players: { w: Actor; b: Actor };
     fen?: string;
     orientation?: Side;
+    coach?: CoachConfig;
   }): void;
   openSetup(opts: {
     source: SetupSource;
@@ -127,6 +224,7 @@ interface GameStore {
     /** Sides chosen in the new-game dialog; applied for the duration of the editor. */
     players?: { w: Actor; b: Actor };
     orientation?: Side;
+    coach?: CoachConfig;
   }): void;
   setSetupPiece(square: string, piece: DraftPiece | null): void;
   moveSetupPiece(from: string, to: string): void;
@@ -146,6 +244,8 @@ interface GameStore {
   flip(): void;
   togglePause(): void;
   finishGame(reason: ResultReason): void;
+  /** Ask the coach for one suggested move in the current position. */
+  askHint(): void;
   retryAi(): void;
   playRandomMove(): void;
   abortAi(): void;
@@ -214,10 +314,206 @@ export const useGame = create<GameStore>((set, get) => {
     });
   }
 
-  function applyMove(from: string, to: string, promotion: string | undefined, actor: Actor): boolean {
+  /* ------------------------------------------------------------- coach work */
+
+  function pushCoachEntry(entry: Omit<CoachEntry, 'id'>): number {
+    coachEntrySeq += 1;
+    const id = coachEntrySeq;
+    set((state) => ({ coachLog: [...state.coachLog, { ...entry, id }].slice(-60) }));
+    return id;
+  }
+
+  function patchCoachEntry(id: number, patch: Partial<CoachEntry>): void {
+    set((state) => ({
+      coachLog: state.coachLog.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  /** Drop cards whose request was cancelled, so nothing spins forever. */
+  function dropPendingEntries(): void {
+    set((state) => ({ coachLog: state.coachLog.filter((entry) => !entry.pending) }));
+  }
+
+  function syncHintBusy(): void {
+    const busy = coachRunning === 'hint' || coachQueue.some((job) => job.kind === 'hint');
+    if (get().hintBusy !== busy) set({ hintBusy: busy });
+  }
+
+  /** Drop every queued or running coach request (new game, setup, pause, undo). */
+  function cancelPendingCoach(): void {
+    coachQueue = [];
+    if (coachAbort) {
+      coachAbort.abort();
+      coachAbort = null;
+    }
+    coachToken += 1;
+    syncHintBusy();
+    dropPendingEntries();
+    if (get().coachSummary?.state === 'running') set({ coachSummary: null });
+  }
+
+  /** A move landed, so any pending suggestion is about a position that is gone. */
+  function dropPendingHints(): void {
+    coachQueue = coachQueue.filter((job) => job.kind !== 'hint');
+    if (coachRunning === 'hint') {
+      coachAbort?.abort();
+      coachAbort = null;
+      coachToken += 1;
+    }
+    syncHintBusy();
+    set((state) => ({
+      coachLog: state.coachLog.filter((entry) => !(entry.pending && entry.kind === 'hint')),
+    }));
+  }
+
+  function queueCoach(job: CoachJob, front = false): void {
+    if (!get().coach.enabled) return;
+    if (front) coachQueue.unshift(job);
+    else coachQueue.push(job);
+    syncHintBusy();
+    void pumpCoach();
+  }
+
+  async function pumpCoach(): Promise<void> {
+    if (coachDraining) return;
+    coachDraining = true;
+    try {
+      for (;;) {
+        const job = coachQueue.shift();
+        if (!job) break;
+        if (!get().coach.enabled) continue;
+        try {
+          await runCoachJob(job);
+        } catch (error) {
+          // A coach failure must never escape as an unhandled rejection: the
+          // game has no reason to care about it.
+          console.warn('coach request failed', error);
+        }
+      }
+    } finally {
+      coachDraining = false;
+      coachRunning = null;
+      syncHintBusy();
+    }
+  }
+
+  async function runCoachJob(job: CoachJob): Promise<void> {
+    const settings = useSettings.getState().settings;
+    const profile = coachProfileFor(settings, get().players);
+    const lang = settings.ui.commentaryLang;
+    const studentSide = studentSideOf(get().players);
+    const controller = new AbortController();
+    coachAbort = controller;
+    coachRunning = job.kind;
+    const token = (coachToken += 1);
+    const isCurrent = () => token === coachToken && !controller.signal.aborted;
+    syncHintBusy();
+    if (job.kind === 'summary') {
+      set({ coachSummary: { state: 'running', text: null, error: null } });
+    }
+
+    try {
+      let system = '';
+      let user = '';
+      if (job.kind === 'review') {
+        system = buildCoachSystemPrompt({ studentSide, lang, fields: job.fields });
+        user = buildCoachReviewPrompt({
+          // The legal-move list of the previous position is only needed when the
+          // coach has to name a better move.
+          before: job.fields.review ? job.before : null,
+          move: job.move,
+          after: new Chess(job.afterFen, { skipValidation: true }),
+        });
+      } else if (job.kind === 'hint') {
+        const chess = new Chess(job.fen, { skipValidation: true });
+        system = buildHintSystemPrompt({ side: job.side, lang });
+        user = buildHintPrompt({ chess, side: job.side, history: job.history });
+      } else {
+        system = buildSummarySystemPrompt({ studentSide, lang });
+        user = buildCoachSummaryPrompt({
+          startFen: job.startFen,
+          sanLine: job.sanLine,
+          result: job.result,
+          lang,
+        });
+      }
+
+      const reply = await requestCoach({
+        cfg: profile.config,
+        system,
+        user,
+        signal: controller.signal,
+      });
+      if (!isCurrent()) return;
+
+      if (job.kind === 'summary') {
+        set({
+          coachSummary: reply.ok
+            ? { state: 'done', text: parseSummary(reply.text), error: null }
+            : { state: 'failed', text: null, error: reply.error ?? '教练请求失败' },
+        });
+        return;
+      }
+
+      if (job.kind === 'hint') {
+        const hint = reply.ok
+          ? parseHint(reply.text, new Chess(job.fen, { skipValidation: true }))
+          : { san: null, why: '' };
+        patchCoachEntry(job.entryId, {
+          san: reply.ok ? hint.san : null,
+          verdict: reply.ok ? hint.why || null : null,
+          error: reply.ok ? null : (reply.error ?? '教练请求失败'),
+          elapsedMs: reply.elapsedMs,
+          pending: false,
+        });
+        return;
+      }
+
+      const parsed = reply.ok
+        ? parseCoachReview(reply.text, job.fields)
+        : { moveReview: null, positionRead: null };
+      const patch: Partial<CoachEntry> = {
+        error: reply.ok ? null : (reply.error ?? '教练请求失败'),
+        elapsedMs: reply.elapsedMs,
+        pending: false,
+      };
+      // Only overwrite what this request actually asked for: the engine's own
+      // explanation of its move is already on the card and must survive.
+      if (job.fields.review) patch.verdict = parsed.moveReview;
+      if (job.fields.position) patch.read = parsed.positionRead;
+      patchCoachEntry(job.entryId, patch);
+    } catch (error) {
+      if (!isCurrent()) return;
+      const message = error instanceof Error ? error.message : String(error);
+      if (job.kind === 'summary') {
+        set({ coachSummary: { state: 'failed', text: null, error: message } });
+      } else {
+        patchCoachEntry(job.entryId, { error: message, pending: false });
+      }
+    } finally {
+      if (coachAbort === controller) coachAbort = null;
+      coachRunning = null;
+      syncHintBusy();
+    }
+  }
+
+  function applyMove(
+    from: string,
+    to: string,
+    promotion: string | undefined,
+    actor: Actor,
+    /** The engine's own explanation of this move, when it was asked for one. */
+    ownCommentary: string | null = null,
+  ): boolean {
     const state = get();
     const move = findLegalMove(engine, { from, to, promotion });
     if (!move) return false;
+    const coach = state.coach;
+    // Only a human move no engine explained itself is critiqued, and only that
+    // case needs the position the move was played in (and its legal moves).
+    const judgeMove = coach.enabled && actor === 'human' && coach.opponentMoves;
+    const beforeFen = judgeMove ? engine.fen() : '';
+    const beforeMoves = judgeMove ? legalMoves(engine).map((item) => item.san) : [];
     const number = engine.moveNumber();
     const applied = engine.move({ from: move.from, to: move.to, promotion: move.promotion });
     if (!applied) return false;
@@ -240,6 +536,71 @@ export const useGame = create<GameStore>((set, get) => {
       turn: engine.turn(),
     });
     set({ moveSeq: state.moveSeq + 1 });
+
+    // A suggestion is about the position that just went away.
+    dropPendingHints();
+    if (coach.enabled) {
+      if (actor === 'human') {
+        const review = coach.opponentMoves;
+        if (review || coach.position) {
+          const entryId = pushCoachEntry({
+            kind: 'review',
+            ply: moveLog.length,
+            number,
+            side: applied.color,
+            san: applied.san,
+            verdict: null,
+            read: null,
+            error: null,
+            elapsedMs: 0,
+            pending: true,
+            expects: { verdict: review, read: coach.position },
+          });
+          queueCoach({
+            kind: 'review',
+            entryId,
+            before: review ? { fen: beforeFen, moves: beforeMoves } : null,
+            afterFen: engine.fen(),
+            move: { number, side: applied.color, san: applied.san },
+            fields: { review, position: coach.position },
+          });
+        }
+      } else if (coach.ownMoves || coach.position) {
+        // The engine narrates its own move (that text rides along with the move
+        // request), so the coach only adds a read of the resulting position.
+        const entryId = pushCoachEntry({
+          kind: 'review',
+          ply: moveLog.length,
+          number,
+          side: applied.color,
+          san: applied.san,
+          verdict: coach.ownMoves ? ownCommentary : null,
+          read: null,
+          error: null,
+          elapsedMs: 0,
+          pending: coach.position,
+          expects: { verdict: coach.ownMoves, read: coach.position },
+        });
+        if (coach.position) {
+          queueCoach({
+            kind: 'review',
+            entryId,
+            before: null,
+            afterFen: engine.fen(),
+            move: { number, side: applied.color, san: applied.san },
+            fields: { review: false, position: true },
+          });
+        }
+      }
+    }
+    if (result && coach.enabled && coach.summary) {
+      queueCoach({
+        kind: 'summary',
+        startFen: state.anchor.fen,
+        sanLine: moveLogToSan(moveLog, state.anchor.logIndex),
+        result: result.text,
+      });
+    }
     return true;
   }
 
@@ -304,7 +665,7 @@ export const useGame = create<GameStore>((set, get) => {
           chess,
           history,
           edited,
-          commentary: settings.ui.commentaryEnabled,
+          commentary: state.coach.enabled && state.coach.ownMoves,
           lang: settings.ui.commentaryLang,
           opponent: state.players[side === 'w' ? 'b' : 'w'] === 'ai' ? 'ai' : 'human',
           exchanges: exchangesBySide[side],
@@ -386,7 +747,7 @@ export const useGame = create<GameStore>((set, get) => {
             }
           : null,
       });
-      applyMove(outcome.move.from, outcome.move.to, outcome.move.promotion, 'ai');
+      applyMove(outcome.move.from, outcome.move.to, outcome.move.promotion, 'ai', outcome.commentary);
       exchangesBySide[side] = appendExchange(
         exchangesBySide[side],
         outcome.exchange,
@@ -472,10 +833,16 @@ export const useGame = create<GameStore>((set, get) => {
     toast: null,
     version: 0,
     moveSeq: 0,
+    coach: { ...DEFAULT_COACH },
+    coachLog: [],
+    hintBusy: false,
+    coachSummary: null,
 
-    startGame({ players, fen, orientation }) {
+    startGame({ players, fen, orientation, coach }) {
       abortAiInternal();
       clearExchanges();
+      cancelPendingCoach();
+      const nextCoach: CoachConfig = { ...(coach ?? get().coach) };
       const startFen = fen ?? START_FEN;
       engine = new Chess(startFen, { skipValidation: true });
       const anchor: Anchor = { fen: startFen, logIndex: 0 };
@@ -492,6 +859,10 @@ export const useGame = create<GameStore>((set, get) => {
         mode: snapshot.mode,
         players,
         orientation: orientation ?? get().orientation,
+        coach: nextCoach,
+        coachLog: [],
+        coachSummary: null,
+        hintBusy: false,
         anchor,
         moveLog: [],
         lastMove: null,
@@ -511,12 +882,17 @@ export const useGame = create<GameStore>((set, get) => {
         turn: engine.turn(),
         version: get().version + 1,
       });
-      useSettings.getState().update({ players, orientation: orientation ?? get().orientation });
+      useSettings.getState().update({
+        players,
+        orientation: orientation ?? get().orientation,
+        coach: nextCoach,
+      });
       scheduleAi();
     },
 
-    openSetup({ source, blank, fen, players: nextPlayers, orientation: nextOrientation }) {
+    openSetup({ source, blank, fen, players: nextPlayers, orientation: nextOrientation, coach }) {
       abortAiInternal();
+      cancelPendingCoach();
       const state = get();
       let draft: SetupDraft;
       if (source === 'new') {
@@ -541,12 +917,17 @@ export const useGame = create<GameStore>((set, get) => {
         mode: 'setup',
         players: nextPlayers ?? state.players,
         orientation: nextOrientation ?? state.orientation,
+        coach: coach ? { ...coach } : state.coach,
         setupDraft: draft,
         setupValidation: validateDraft(cloneDraft(draft)),
         setupPast: [],
         setupFuture: [],
         setupReturn: returnSnapshot,
-        setupReturnSides: { players: state.players, orientation: state.orientation },
+        setupReturnSides: {
+          players: state.players,
+          orientation: state.orientation,
+          coach: state.coach,
+        },
         setupSource: source,
         thinking: false,
         aiTurn: null,
@@ -663,6 +1044,7 @@ export const useGame = create<GameStore>((set, get) => {
       abortAiInternal();
       // The board was rearranged, so every remembered position pack is stale.
       clearExchanges();
+      cancelPendingCoach();
       const fen = draftToFen(draft);
       const chess = draftToChess(draft);
       const result = gameResultOf(chess);
@@ -696,6 +1078,8 @@ export const useGame = create<GameStore>((set, get) => {
         moveLog,
         lastMove: null,
         result,
+        coachLog: [],
+        coachSummary: null,
         snapshots: isMidgame ? [...state.snapshots, snapshot] : [snapshot],
         setupDraft: null,
         setupValidation: null,
@@ -726,6 +1110,7 @@ export const useGame = create<GameStore>((set, get) => {
           mode: 'idle',
           players: state.setupReturnSides?.players ?? state.players,
           orientation: state.setupReturnSides?.orientation ?? state.orientation,
+          coach: state.setupReturnSides?.coach ?? state.coach,
           anchor: { fen: START_FEN, logIndex: 0 },
           moveLog: [],
           lastMove: null,
@@ -758,6 +1143,7 @@ export const useGame = create<GameStore>((set, get) => {
         mode: back.mode,
         players: state.setupReturnSides?.players ?? state.players,
         orientation: state.setupReturnSides?.orientation ?? state.orientation,
+        coach: state.setupReturnSides?.coach ?? state.coach,
         anchor: back.anchor,
         moveLog: back.moveLog,
         lastMove: back.lastMove,
@@ -807,6 +1193,8 @@ export const useGame = create<GameStore>((set, get) => {
         w: truncateForPly(exchangesBySide.w, playedMoves),
         b: truncateForPly(exchangesBySide.b, playedMoves),
       };
+      // Coach remarks about positions that no longer exist go too.
+      cancelPendingCoach();
       set({
         mode: snapshot.mode === 'finished' ? 'playing' : snapshot.mode,
         anchor: snapshot.anchor,
@@ -814,6 +1202,8 @@ export const useGame = create<GameStore>((set, get) => {
         lastMove: snapshot.lastMove,
         result: snapshot.mode === 'finished' ? null : snapshot.result,
         snapshots: state.snapshots.slice(0, target + 1),
+        coachLog: state.coachLog.filter((entry) => entry.ply <= playedMoves),
+        coachSummary: null,
         thinking: false,
         aiTurn: null,
         aiError: null,
@@ -834,6 +1224,8 @@ export const useGame = create<GameStore>((set, get) => {
       const state = get();
       if (state.mode === 'playing') {
         abortAiInternal();
+        // Nothing should be hitting the network while the game is paused.
+        cancelPendingCoach();
         set({ mode: 'paused', thinking: false, version: state.version + 1 });
       } else if (state.mode === 'paused') {
         set({ mode: 'playing', aiError: null, version: state.version + 1 });
@@ -843,6 +1235,7 @@ export const useGame = create<GameStore>((set, get) => {
 
     finishGame(reason) {
       abortAiInternal();
+      cancelPendingCoach();
       const state = get();
       if (state.mode === 'idle' || state.mode === 'setup') return;
       if (state.mode === 'finished') return;
@@ -862,6 +1255,40 @@ export const useGame = create<GameStore>((set, get) => {
         turn: state.turn,
       });
       set({ thinking: false, aiTurn: null, aiError: null });
+    },
+
+    askHint() {
+      const state = get();
+      if (!state.coach.enabled || !state.coach.hint) return;
+      if (state.mode !== 'playing' || state.thinking) return;
+      if (state.players[state.turn] !== 'human') return;
+      const ply = state.moveLog.filter((entry) => entry.actor !== 'edit').length;
+      // Asking again replaces the previous suggestion for the same position.
+      set({ coachLog: state.coachLog.filter((e) => !(e.kind === 'hint' && e.ply === ply)) });
+      const number = engine.moveNumber();
+      const entryId = pushCoachEntry({
+        kind: 'hint',
+        ply,
+        number,
+        side: state.turn,
+        san: null,
+        verdict: null,
+        read: null,
+        error: null,
+        elapsedMs: 0,
+        pending: true,
+        expects: { verdict: true, read: false },
+      });
+      queueCoach(
+        {
+          kind: 'hint',
+          entryId,
+          fen: engine.fen(),
+          side: state.turn,
+          history: moveLogToSan(state.moveLog, state.anchor.logIndex),
+        },
+        true,
+      );
     },
 
     retryAi() {

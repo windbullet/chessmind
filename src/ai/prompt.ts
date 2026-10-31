@@ -29,11 +29,11 @@ const LANG_NAME: Record<string, string> = {
   ru: 'Russian',
 };
 
-function langName(code: string): string {
+export function langName(code: string): string {
   return LANG_NAME[code] ?? 'English';
 }
 
-function sideWord(side: Side): string {
+export function sideWord(side: Side): string {
   return side === 'w' ? 'White' : 'Black';
 }
 

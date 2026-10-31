@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, Brain, MessageSquareQuote, RotateCw, Wand2 } from 'lucide-react';
+import { AlertTriangle, Brain, RotateCw, Wand2 } from 'lucide-react';
 import { useGame } from '../../game/store';
-import { useSettings } from '../../settings';
 import { cachedShare } from '../../ai/context';
+import { isCoachOn } from '../../coach/types';
 import type { AttemptRecord } from '../../ai/types';
 
 export function AiPanel() {
@@ -12,8 +12,8 @@ export function AiPanel() {
   const retryAi = useGame((s) => s.retryAi);
   const playRandomMove = useGame((s) => s.playRandomMove);
   const mode = useGame((s) => s.mode);
-  const showReasoning = useSettings((s) => s.settings.ui.showReasoning);
-  const commentaryEnabled = useSettings((s) => s.settings.ui.commentaryEnabled);
+  const coachOn = useGame((s) => s.coach.enabled);
+  const showReasoning = useGame((s) => isCoachOn(s.coach, 'showReasoning'));
   const reasoningRef = useRef<HTMLDivElement>(null);
   const autoScroll = useRef(true);
 
@@ -33,7 +33,8 @@ export function AiPanel() {
         <Brain size={26} style={{ opacity: 0.5, marginBottom: 8 }} />
         <div>AI 还没有走过棋。</div>
         <div style={{ marginTop: 6 }}>
-          开始一局并让 AI 执白或执黑，这里会实时显示它的思维链（如果模型支持）、着法解释与每次请求的耗时。
+          开始一局并让 AI 执白或执黑，这里会实时显示它的思维链与每次请求的耗时；
+          着法解释在「教练」页，需要先在新对局里开启教练模式。
         </div>
       </div>
     );
@@ -102,19 +103,10 @@ export function AiPanel() {
         </div>
       )}
 
-      {aiTurn?.commentary && (
-        <div className="commentary-block">
-          <div className="commentary-label">
-            <MessageSquareQuote size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-            着法解释
-          </div>
-          {aiTurn.commentary}
-        </div>
-      )}
-
-      {!commentaryEnabled && (
+      {!coachOn && (
         <div className="faint" style={{ fontSize: 11.5 }}>
-          着法解释已在设置中关闭，AI 只输出着法本身。
+          教练模式没开，这里只显示请求记录与 token 用量。教练模式在「新对局」里开启，
+          开启后 AI 的着法解释会出现在「教练」页。
         </div>
       )}
 
@@ -182,7 +174,7 @@ function AttemptCard({
     if (attempt.text.trim()) return attempt.text.trim();
     if (showReasoning && attempt.reasoning.trim()) return attempt.reasoning.trim();
     if (!attempt.text.trim() && !attempt.reasoning.trim()) return '(空)';
-    return '(仅思维链内容，已按设置隐藏)';
+    return '(内容只有思维链，本次未显示)';
   }, [attempt.text, attempt.reasoning, showReasoning]);
 
   return (

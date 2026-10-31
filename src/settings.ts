@@ -9,6 +9,8 @@ import {
 } from './config';
 import type { AppSettings } from './config';
 import type { AiConfig, AiProfile } from './ai/types';
+import type { CoachConfig, CoachOptionKey } from './coach/types';
+import type { Actor } from './game/types';
 
 interface SettingsStore {
   settings: AppSettings;
@@ -20,6 +22,9 @@ interface SettingsStore {
   /** Patch the profile currently open in the settings editor. */
   updateAi(patch: Partial<AiConfig>): void;
   updateUi(patch: Partial<AppSettings['ui']>): void;
+  /** Coach mode of the next game; chosen in the new-game dialog. */
+  updateCoach(patch: Partial<CoachConfig>): void;
+  updateCoachOption(key: CoachOptionKey, value: boolean): void;
   replace(next: AppSettings): void;
   /** Currently selected (edited / played) profile id. */
   selectProfile(id: string): void;
@@ -73,6 +78,25 @@ export function activeProfileOf(settings: AppSettings): AiProfile {
   );
 }
 
+/**
+ * The profile that answers coach requests for a game.
+ *
+ * An explicit pick wins. Otherwise the coach follows the engine that plays
+ * against the human, so "more of the same model" is the default; when neither
+ * side is an engine (both human, or both AI) there is nothing to follow and the
+ * profile open in the editor is used.
+ */
+export function coachProfileFor(
+  settings: AppSettings,
+  players: { w: Actor; b: Actor },
+): AiProfile {
+  const picked = settings.aiProfiles.find((profile) => profile.id === settings.coach.profileId);
+  if (picked) return picked;
+  if (players.w === 'human' && players.b === 'ai') return profileFor(settings, 'b');
+  if (players.b === 'human' && players.w === 'ai') return profileFor(settings, 'w');
+  return activeProfileOf(settings);
+}
+
 export const useSettings = create<SettingsStore>((set, get) => {
   /**
    * Apply a change and persist it.
@@ -99,6 +123,11 @@ export const useSettings = create<SettingsStore>((set, get) => {
         w: byId.has(settings.aiSelection.w) ? settings.aiSelection.w : first,
         b: byId.has(settings.aiSelection.b) ? settings.aiSelection.b : first,
       },
+      // Deleting a profile must not leave the coach pointing at it.
+      coach:
+        settings.coach.profileId && !byId.has(settings.coach.profileId)
+          ? { ...settings.coach, profileId: '' }
+          : settings.coach,
     };
   }
 
@@ -137,6 +166,16 @@ export const useSettings = create<SettingsStore>((set, get) => {
     updateUi(patch) {
       const settings = get().settings;
       commit({ ...settings, ui: { ...settings.ui, ...patch } });
+    },
+
+    updateCoach(patch) {
+      const settings = get().settings;
+      commit({ ...settings, coach: { ...settings.coach, ...patch } });
+    },
+
+    updateCoachOption(key, value) {
+      const settings = get().settings;
+      commit({ ...settings, coach: { ...settings.coach, [key]: value } });
     },
 
     replace(next) {

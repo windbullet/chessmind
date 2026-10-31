@@ -7,14 +7,15 @@ import type {
   ThinkingEffort,
   ThinkingMode,
 } from './ai/types';
+import { DEFAULT_COACH } from './coach/types';
+import type { CoachConfig } from './coach/types';
 import type { Actor, Side } from './game/types';
 
 export interface UiSettings {
   theme: 'dark' | 'light';
   boardTheme: 'midnight' | 'forest' | 'walnut' | 'slate';
   showCoordinates: boolean;
-  showReasoning: boolean;
-  commentaryEnabled: boolean;
+  /** Language the coach writes in (and the model's own move explanations). */
   commentaryLang: string;
 }
 
@@ -28,6 +29,8 @@ export interface AppSettings {
   ui: UiSettings;
   players: { w: Actor; b: Actor };
   orientation: Side;
+  /** Coach mode choices of the last game; they are picked per game in the new-game dialog. */
+  coach: CoachConfig;
 }
 
 export const DEFAULT_AI: AiConfig = {
@@ -73,12 +76,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     theme: 'dark',
     boardTheme: 'midnight',
     showCoordinates: true,
-    showReasoning: true,
-    commentaryEnabled: true,
     commentaryLang: 'zh',
   },
   players: { w: 'ai', b: 'human' },
   orientation: 'w',
+  coach: { ...DEFAULT_COACH },
 };
 
 export const LANG_OPTIONS = [
@@ -175,6 +177,23 @@ function sanitizeProfiles(raw: unknown, legacyAi: Record<string, unknown> | null
   ];
 }
 
+function sanitizeCoach(raw: unknown, profiles: AiProfile[]): CoachConfig {
+  if (!isRecord(raw)) return { ...DEFAULT_COACH };
+  // A profile may have been deleted since; an unknown id falls back to "resolve it".
+  const wanted = str(raw.profileId, '');
+  const profileId = profiles.some((profile) => profile.id === wanted) ? wanted : '';
+  return {
+    enabled: bool(raw.enabled, DEFAULT_COACH.enabled),
+    showReasoning: bool(raw.showReasoning, DEFAULT_COACH.showReasoning),
+    ownMoves: bool(raw.ownMoves, DEFAULT_COACH.ownMoves),
+    opponentMoves: bool(raw.opponentMoves, DEFAULT_COACH.opponentMoves),
+    position: bool(raw.position, DEFAULT_COACH.position),
+    hint: bool(raw.hint, DEFAULT_COACH.hint),
+    summary: bool(raw.summary, DEFAULT_COACH.summary),
+    profileId,
+  };
+}
+
 export function sanitizeSettings(raw: unknown): AppSettings {
   if (!isRecord(raw)) {
     return sanitizeSettings({
@@ -206,8 +225,6 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? (uiRaw.boardTheme as UiSettings['boardTheme'])
         : 'midnight',
       showCoordinates: bool(uiRaw.showCoordinates, true),
-      showReasoning: bool(uiRaw.showReasoning, true),
-      commentaryEnabled: bool(uiRaw.commentaryEnabled, true),
       commentaryLang: LANG_OPTIONS.some((option) => option.value === uiRaw.commentaryLang)
         ? (uiRaw.commentaryLang as string)
         : 'zh',
@@ -217,6 +234,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       b: playersRaw.b === 'human' ? 'human' : 'ai',
     },
     orientation: raw.orientation === 'b' ? 'b' : 'w',
+    coach: sanitizeCoach(raw.coach, aiProfiles),
   };
 }
 

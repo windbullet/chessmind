@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { profileFor } from '../src/settings';
+import { coachProfileFor, profileFor } from '../src/settings';
 import { DEFAULT_AI } from '../src/config';
+import { DEFAULT_COACH } from '../src/coach/types';
 import type { AppSettings } from '../src/config';
 import type { AiProfile } from '../src/ai/types';
 
@@ -18,12 +19,11 @@ function twoSided(): AppSettings {
       theme: 'dark',
       boardTheme: 'midnight',
       showCoordinates: true,
-      showReasoning: true,
-      commentaryEnabled: true,
       commentaryLang: 'zh',
     },
     players: { w: 'ai', b: 'ai' },
     orientation: 'w',
+    coach: { ...DEFAULT_COACH },
   };
 }
 
@@ -55,5 +55,31 @@ describe('per-side AI selection', () => {
     );
     expect(profileFor(settings, 'w').config.model).toBe('claude-opus-4-6');
     expect(profileFor(settings, 'b').config.model).toBe('gpt-5');
+  });
+});
+
+describe('coach profile resolution', () => {
+  it('follows the engine that plays against the human', () => {
+    const settings = twoSided();
+    expect(coachProfileFor(settings, { w: 'human', b: 'ai' }).id).toBe('b');
+    expect(coachProfileFor(settings, { w: 'ai', b: 'human' }).id).toBe('a');
+  });
+
+  it('uses the profile being edited when neither side is an engine', () => {
+    const settings = twoSided();
+    expect(coachProfileFor(settings, { w: 'human', b: 'human' }).id).toBe('a');
+    expect(coachProfileFor(settings, { w: 'ai', b: 'ai' }).id).toBe('a');
+  });
+
+  it('honours an explicit choice over the automatic one', () => {
+    const settings = twoSided();
+    settings.coach = { ...settings.coach, profileId: 'a' };
+    expect(coachProfileFor(settings, { w: 'human', b: 'ai' }).id).toBe('a');
+  });
+
+  it('falls back to automatic when the chosen profile is gone', () => {
+    const settings = twoSided();
+    settings.coach = { ...settings.coach, profileId: 'deleted' };
+    expect(coachProfileFor(settings, { w: 'human', b: 'ai' }).id).toBe('b');
   });
 });

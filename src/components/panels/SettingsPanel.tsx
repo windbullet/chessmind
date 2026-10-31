@@ -15,6 +15,7 @@ import { LANG_OPTIONS, BOARD_THEMES } from '../../config';
 import { useSettings, activeProfileOf } from '../../settings';
 import { runAttempt } from '../../ai/client';
 import { bridge } from '../../bridge';
+import { Switch } from '../ui/Switch';
 
 const EFFORT_HINTS: Record<ThinkingEffort, string> = {
   low: '低思考强度',
@@ -629,35 +630,33 @@ export function SettingsPanel() {
       <div className="divider" />
 
       <div className="settings-group">
-        <p className="section-title">界面与对局</p>
-        <Switch
-          title="显示思维链"
-          sub="在「AI 思考」面板显示模型返回的 reasoning 内容"
-          on={ui.showReasoning}
-          onChange={(value) => updateUi({ showReasoning: value })}
-        />
-        <Switch
-          title="让 AI 写着法解释"
-          sub="每次走子附带 1–3 句面向观众的解说；关闭后只输出着法"
-          on={ui.commentaryEnabled}
-          onChange={(value) => updateUi({ commentaryEnabled: value })}
-        />
+        <p className="section-title">教练</p>
+        <p className="faint" style={{ fontSize: 12, lineHeight: 1.7 }}>
+          教练模式在「新对局」里开启：显示思维链、着法解释、点评着法、局势解读、申请指导和对局简评都在那里选，
+          教练用哪套配置也在那里选。这里只保留一个通用语言。
+        </p>
+        <label className="field">
+          <span className="field-label">教练语言</span>
+          <select
+            className="select"
+            value={ui.commentaryLang}
+            onChange={(event) => updateUi({ commentaryLang: event.target.value })}
+          >
+            {LANG_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">教练点评、局势解读与 AI 的着法解释都用这种语言写。</span>
+        </label>
+      </div>
+
+      <div className="divider" />
+
+      <div className="settings-group">
+        <p className="section-title">界面</p>
         <div className="row">
-          <label className="field">
-            <span className="field-label">解说语言</span>
-            <select
-              className="select"
-              value={ui.commentaryLang}
-              onChange={(event) => updateUi({ commentaryLang: event.target.value })}
-              disabled={!ui.commentaryEnabled}
-            >
-              {LANG_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="field">
             <span className="field-label">棋盘配色</span>
             <select
@@ -695,6 +694,7 @@ export function SettingsPanel() {
       </div>
 
       <AboutSection />
+
     </div>
   );
 }
@@ -724,31 +724,3 @@ function AboutSection() {
   );
 }
 
-export function Switch({
-  title,
-  sub,
-  on,
-  onChange,
-}: {
-  title: string;
-  sub?: string;
-  on: boolean;
-  onChange(value: boolean): void;
-}) {
-  return (
-    <button
-      type="button"
-      className="switch"
-      data-on={on}
-      onClick={() => onChange(!on)}
-      role="switch"
-      aria-checked={on}
-    >
-      <span className="switch-text">
-        <span className="switch-title">{title}</span>
-        {sub && <span className="switch-sub">{sub}</span>}
-      </span>
-      <span className="switch-track" />
-    </button>
-  );
-}

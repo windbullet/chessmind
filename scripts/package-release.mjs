@@ -128,10 +128,18 @@ await rm(setupPath, { force: true });
 let setupHash = null;
 try {
   const candidates = (await readdir(nsisDir)).filter((f) => f.toLowerCase().endsWith('.exe'));
-  if (candidates.length !== 1) {
-    throw new Error(`expected one .exe in ${nsisDir}, found ${candidates.length}`);
+  // The bundle directory keeps installers from previous versions, so pick ours
+  // by version instead of trusting "there is exactly one file here".
+  const wanted = `ChessMind_${version}_x64-setup.exe`.toLowerCase();
+  const match = candidates.find((f) => f.toLowerCase() === wanted);
+  if (!match) {
+    throw new Error(
+      `expected ${wanted} in ${nsisDir}, found ${
+        candidates.length ? candidates.join(', ') : 'nothing'
+      }`,
+    );
   }
-  await copyFile(join(nsisDir, candidates[0]), setupPath);
+  await copyFile(join(nsisDir, match), setupPath);
   setupHash = await writeHash(setupPath);
 } catch (err) {
   console.error(`未找到安装包（${err.message}）。`);

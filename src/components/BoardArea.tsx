@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PieceSymbol } from 'chess.js';
 import type { Move } from 'chess.js';
+import { Lightbulb } from 'lucide-react';
 import { useEditor } from '../editorTool';
 import { legalMoves } from '../game/engine';
 import { boardFromFen, squareIndex } from '../game/setup';
@@ -30,6 +31,13 @@ export function BoardArea() {
   const setSetupPiece = useGame((s) => s.setSetupPiece);
   const moveSetupPiece = useGame((s) => s.moveSetupPiece);
   const ui = useSettings((s) => s.settings.ui);
+  const coach = useGame((s) => s.coach);
+  const askHint = useGame((s) => s.askHint);
+  const hintBusy = useGame((s) => s.hintBusy);
+  const coachLog = useGame((s) => s.coachLog);
+  const playedMoves = useGame(
+    (s) => s.moveLog.filter((entry) => entry.actor !== 'edit').length,
+  );
   const tool = useEditor((s) => s.tool);
   const paintPiece = useEditor((s) => s.piece);
 
@@ -88,6 +96,16 @@ export function BoardArea() {
   }, [fen, turn, selected, squares, editing]);
 
   const humanCanMove = !editing && mode === 'playing' && players[turn] === 'human' && !thinking;
+
+  const canAskHint = humanCanMove && coach.enabled && coach.hint;
+  /** The suggestion for the position currently on the board, if one was asked for. */
+  const hint = useMemo(() => {
+    for (let i = coachLog.length - 1; i >= 0; i -= 1) {
+      const entry = coachLog[i];
+      if (entry.kind === 'hint' && entry.ply === playedMoves) return entry;
+    }
+    return null;
+  }, [coachLog, playedMoves]);
 
   /**
    * `applied` — the move is on the board; `pending` — a promotion choice is
@@ -203,30 +221,77 @@ export function BoardArea() {
   );
 
   return (
-    <div className="board-card">
-      <Board
-        squares={squares}
-        orientation={orientation}
-        boardTheme={ui.boardTheme}
-        showCoordinates={ui.showCoordinates}
-        editing={editing}
-        selected={selected}
-        targets={targets}
-        lastMove={editing ? null : lastMove}
-        moveSeq={editing ? 0 : moveSeq}
-        checkSquare={checkSquare}
-        interactive={editing || humanCanMove}
-        onSquareClick={handleSquareClick}
-        onPieceDrop={handleDrop}
-        onSquareRightClick={handleRightClick}
-        onExternalDrop={handleExternalDrop}
-        onPickUp={(square) => {
-          if (!humanCanMove) return;
-          const piece = squares[squareIndex(square)];
-          if (piece && piece.color === turn) setSelected(square);
-        }}
-        overlay={overlay}
-      />
-    </div>
+    <>
+      <div className="board-card">
+        <Board
+          squares={squares}
+          orientation={orientation}
+          boardTheme={ui.boardTheme}
+          showCoordinates={ui.showCoordinates}
+          editing={editing}
+          selected={selected}
+          targets={targets}
+          lastMove={editing ? null : lastMove}
+          moveSeq={editing ? 0 : moveSeq}
+          checkSquare={checkSquare}
+          interactive={editing || humanCanMove}
+          onSquareClick={handleSquareClick}
+          onPieceDrop={handleDrop}
+          onSquareRightClick={handleRightClick}
+          onExternalDrop={handleExternalDrop}
+          onPickUp={(square) => {
+            if (!humanCanMove) return;
+            const piece = squares[squareIndex(square)];
+            if (piece && piece.color === turn) setSelected(square);
+          }}
+          overlay={overlay}
+        />
+      </div>
+
+      {canAskHint && (
+        <div className="hint-bar">
+          <div className="hint-row">
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={askHint}
+              disabled={hintBusy}
+              title="让教练给一手推荐（快捷键 H）"
+            >
+              {hintBusy ? <span className="spinner" /> : <Lightbulb size={13} />}
+              {hintBusy ? '请教中…' : hint ? '再问一次' : '请求指导'}
+            </button>
+            <span className="faint" style={{ fontSize: 11.5 }}>
+              {hintBusy
+                ? '教练正在看这个局面…'
+                : '教练的推荐只是参考，走棋还是你来。'}
+            </span>
+          </div>
+          {hint && (
+            <div
+              className="hint-card"
+              data-error={hint.error ? 'true' : undefined}
+              data-pending={hint.pending ? 'true' : undefined}
+            >
+              {hint.pending ? (
+                <span className="hint-why">
+                  <span className="spinner" style={{ marginRight: 7 }} />
+                  教练正在看这个局面…
+                </span>
+              ) : hint.error ? (
+                <span className="hint-why">教练没能给出建议：{hint.error}</span>
+              ) : hint.san ? (
+                <>
+                  <span className="hint-move">{hint.san}</span>
+                  <span className="hint-why">{hint.verdict || '教练没有说明理由。'}</span>
+                </>
+              ) : (
+                <span className="hint-why">教练没有给出合法的推荐着法。</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }

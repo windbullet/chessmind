@@ -248,24 +248,6 @@
   font-family: var(--mono);
 }
 
-.commentary-block {
-  padding: 12px 13px;
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.32);
-  background: rgba(139, 92, 246, 0.1);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.commentary-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--accent-2);
-  margin-bottom: 5px;
-}
-
 .attempt {
   border-radius: 11px;
   border: 1px solid var(--border);
@@ -530,3 +512,260 @@
   color: var(--text-faint);
   line-height: 1.4;
 }
+
+/* ------------------------------------------------------------------- coach */
+
+.coach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.coach-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+}
+
+.coach-chip[data-on='false'] {
+  color: var(--text-faint);
+  border-style: dashed;
+  background: transparent;
+}
+
+.coach-entry {
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 10px 12px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.coach-entry[data-kind='hint'] {
+  border-color: rgba(76, 201, 240, 0.32);
+  background: rgba(76, 201, 240, 0.07);
+}
+
+.coach-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coach-entry-round {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.coach-entry-side {
+  color: var(--text-dim);
+}
+
+.coach-entry-san {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.coach-entry-state {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+}
+
+/* Every paragraph is its own labelled block, so "点评" and "局势" can never
+   bleed into one undifferentiated wall of text. */
+.coach-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.coach-part-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--accent-2);
+}
+
+.coach-part[data-part='read'] .coach-part-head,
+.coach-part[data-part='hint'] .coach-part-head {
+  color: var(--accent);
+}
+
+.coach-suggest {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.coach-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.coach-error {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--danger);
+  word-break: break-word;
+}
+
+/* The master switch and everything it unlocks are one block: the options sit
+   behind an indented rail and a slightly dimmer title, so the hierarchy is
+   obvious at a glance instead of reading as six more switches. */
+.coach-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.02);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.coach-block[data-on='true'] {
+  border-color: rgba(139, 92, 246, 0.32);
+  background: rgba(139, 92, 246, 0.055);
+}
+
+.coach-block > .switch > .switch-text > .switch-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.coach-block-body {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 12px 2px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(139, 92, 246, 0.3);
+}
+
+.coach-block-body > .switch {
+  padding: 7px 0;
+}
+
+.coach-block-body > .switch:last-of-type {
+  border-bottom: none;
+  margin-bottom: 6px;
+}
+
+.coach-block-body .switch-title {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+
+.coach-block-body > .field {
+  margin-top: 8px;
+}
+
+.coach-summary {
+  border-radius: 12px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.08);
+  overflow: hidden;
+}
+
+.coach-summary[data-state='failed'] {
+  border-color: rgba(244, 82, 109, 0.3);
+  background: rgba(244, 82, 109, 0.08);
+}
+
+.coach-summary-body {
+  padding: 11px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --------------------------------------------------- guidance under the board */
+
+.hint-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.hint-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hint-card {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(76, 201, 240, 0.3);
+  background: rgba(76, 201, 240, 0.09);
+}
+
+.hint-card[data-error='true'] {
+  border-color: rgba(244, 82, 109, 0.3);
+  background: rgba(244, 82, 109, 0.08);
+  color: var(--danger);
+}
+
+.hint-card[data-pending='true'] {
+  border-style: dashed;
+  background: rgba(76, 201, 240, 0.04);
+}
+
+.hint-move {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.hint-why {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+

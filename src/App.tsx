@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Brain, ListOrdered, Settings2 } from 'lucide-react';
+import { Brain, GraduationCap, ListOrdered, Settings2 } from 'lucide-react';
 import { useGame } from './game/store';
 import { flushSettingsSave, onSettingsSaveError, useSettings } from './settings';
 import { SetupEditor } from './components/SetupEditor';
 import { BoardArea } from './components/BoardArea';
 import { TopBar } from './components/TopBar';
 import { AiPanel } from './components/panels/AiPanel';
+import { CoachPanel } from './components/panels/CoachPanel';
 import { GamePanel } from './components/panels/GamePanel';
 import { NewGameDialog } from './components/panels/NewGameDialog';
 import { SettingsPanel } from './components/panels/SettingsPanel';
 import { ToastHost } from './components/ui/Toast';
 
-type Tab = 'game' | 'ai' | 'settings';
+type Tab = 'game' | 'ai' | 'coach' | 'settings';
 
 /** True for widgets that own their own keyboard handling. */
 function ownsKeyboard(target: EventTarget | null): boolean {
@@ -32,6 +33,10 @@ export function App() {
   const loadSettings = useSettings((s) => s.loadSettings);
   const loaded = useSettings((s) => s.loaded);
   const loadError = useSettings((s) => s.loadError);
+  const coachEnabled = useGame((s) => s.coach.enabled);
+  const coachBusy = useGame(
+    (s) => s.coachLog.some((entry) => entry.pending) || s.coachSummary?.state === 'running',
+  );
   const [tab, setTab] = useState<Tab>('game');
   const [newGameOpen, setNewGameOpen] = useState(false);
 
@@ -68,6 +73,7 @@ export function App() {
       const game = useGame.getState();
       if (event.key === 'f') game.flip();
       if (event.key === 'u') game.undo();
+      if (event.key === 'h') game.askHint();
       if (event.key === ' ') {
         event.preventDefault();
         game.togglePause();
@@ -85,8 +91,14 @@ export function App() {
     useGame.setState({
       players: settings.players,
       orientation: settings.orientation,
+      coach: settings.coach,
     });
-  }, [loaded, booted, settings.players, settings.orientation]);
+  }, [loaded, booted, settings.players, settings.orientation, settings.coach]);
+
+  // The coach tab only exists while coach mode is on.
+  useEffect(() => {
+    if (!coachEnabled && tab === 'coach') setTab('game');
+  }, [coachEnabled, tab]);
 
   const attemptCount = aiTurn?.attempts.length ?? 0;
 
@@ -129,6 +141,17 @@ export function App() {
               {thinking && <span className="tab-badge">…</span>}
               {!thinking && attemptCount > 0 && <span className="tab-badge">{attemptCount}</span>}
             </button>
+            {coachEnabled && (
+              <button
+                type="button"
+                className="tab"
+                data-active={tab === 'coach'}
+                onClick={() => setTab('coach')}
+              >
+                <GraduationCap size={14} /> 教练
+                {coachBusy && <span className="tab-badge">…</span>}
+              </button>
+            )}
             <button
               type="button"
               className="tab"
@@ -141,6 +164,7 @@ export function App() {
           <div className="panel-body">
             {tab === 'game' && <GamePanel />}
             {tab === 'ai' && <AiPanel />}
+            {tab === 'coach' && coachEnabled && <CoachPanel />}
             {tab === 'settings' && <SettingsPanel />}
           </div>
         </aside>

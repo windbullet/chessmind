@@ -14,6 +14,7 @@
 
 - **兼容接口**：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini 原生 API。
 - **四种对局模式**：我执白、我执黑、AI 对 AI、双人本地。
+- **教练模式**：开局时可选思维链、着法解释、逐手点评、局势解读、随时申请指导、终局简评，教练模型可以单独指定。
 - **实时思维链**：模型支持时显示推理过程，展示每一步的耗时、HTTP 状态和 token 用量。
 - **摆棋编辑器**：开局前或对局中途都能摆，支持载入与复制 FEN。
 - **多套配置**：保存多套API接口配置，AI 对 AI 时两边可以用不同模型互下。
@@ -25,15 +26,15 @@
 
 | 文件 | 场景 |
 | --- | --- |
-| `ChessMind-1.0.0-win-x64-setup.exe` | 一键安装包 |
-| `ChessMind-1.0.0-win-x64.zip` | 免安装压缩包，解压即用 |
+| `ChessMind-1.1.0-win-x64-setup.exe` | 一键安装包 |
+| `ChessMind-1.1.0-win-x64.zip` | 免安装压缩包，解压即用 |
 
 各版本的改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 每个文件都配了 `.sha256`，下载后可校验：
 
 ```powershell
-Get-FileHash .\ChessMind-1.0.0-win-x64.zip -Algorithm SHA256
+Get-FileHash .\ChessMind-1.1.0-win-x64.zip -Algorithm SHA256
 ```
 
 **系统要求**：Windows 10 1803+ 或 Windows 11，需要 WebView2 运行时（通常系统自带）。
@@ -69,6 +70,7 @@ Get-FileHash .\ChessMind-1.0.0-win-x64.zip -Algorithm SHA256
 | --- | --- |
 | `F` | 翻转棋盘 |
 | `U` | 悔棋 |
+| `H` | 请求指导（教练模式） |
 | `Space` | 暂停 / 继续 |
 | `1`–`6` | 摆棋时选择棋子类型 |
 | `W` / `B` | 摆棋时切换白 / 黑 |
@@ -105,6 +107,7 @@ npm run tauri build      # 只出 NSIS 安装包
 - **严格契约加三级解析**：模型输出 JSON，解析时依次尝试字段、UCI 坐标、SAN 词元；全不合法就把错因连同合法着法再发一次。
 - **竞态保护**：悔棋、暂停、结束、摆棋会立即作废在途请求，旧着法不会落到新局面。
 - **上下文可选**：连续上下文让模型延续自己的计划并命中前缀缓存，每步独立则每次从当前局面重新推理。
+- **教练与对局分离**：教练是独立请求，落子之后才发，既不写进对局上下文，也影响不了 AI 那一手的选择。
 
 ## 致谢
 

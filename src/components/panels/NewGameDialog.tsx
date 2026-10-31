@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Bot, LayoutGrid, Users } from 'lucide-react';
+import { Bot, GraduationCap, LayoutGrid, Users } from 'lucide-react';
 import { useGame } from '../../game/store';
-import { useSettings } from '../../settings';
+import { useSettings, coachProfileFor } from '../../settings';
+import { COACH_OPTIONS } from '../../coach/types';
 import type { Actor, Side } from '../../game/types';
 import { Modal } from '../ui/Modal';
+import { Switch } from '../ui/Switch';
 
 export interface NewGameDialogProps {
   open: boolean;
@@ -66,12 +68,17 @@ export function NewGameDialog({ open, onClose }: NewGameDialogProps) {
   const mode = useGame((s) => s.mode);
   const settings = useSettings((s) => s.settings);
   const setSideProfile = useSettings((s) => s.setSideProfile);
+  const updateCoach = useSettings((s) => s.updateCoach);
+  const updateCoachOption = useSettings((s) => s.updateCoachOption);
+  const coach = settings.coach;
 
   const chosen = PRESETS.find((item) => item.id === preset) ?? PRESETS[0];
   const needsWhite = chosen.players.w === 'ai';
   const needsBlack = chosen.players.b === 'ai';
   /** There is a live game whose result would be discarded by starting over. */
   const hasLiveGame = mode === 'playing' || mode === 'paused' || mode === 'finished';
+  /** Profile that will answer coach requests for the setup chosen above. */
+  const coachPick = coachProfileFor(settings, chosen.players);
 
   const profileLabel = (id: string): string => {
     const profile = settings.aiProfiles.find((item) => item.id === id);
@@ -100,6 +107,7 @@ export function NewGameDialog({ open, onClose }: NewGameDialogProps) {
         blank: true,
         players: chosen.players,
         orientation: chosen.orientation,
+        coach,
       });
       return;
     }
@@ -110,12 +118,14 @@ export function NewGameDialog({ open, onClose }: NewGameDialogProps) {
         fen: currentFen,
         players: chosen.players,
         orientation: chosen.orientation,
+        coach,
       });
       return;
     }
     startGame({
       players: chosen.players,
       orientation: chosen.orientation,
+      coach,
     });
     onClose();
   };
@@ -184,6 +194,56 @@ export function NewGameDialog({ open, onClose }: NewGameDialogProps) {
           </span>
         </div>
       )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <p className="section-title">
+          <GraduationCap size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+          教练模式
+        </p>
+        <div className="coach-block" data-on={coach.enabled}>
+          <Switch
+            title="开启教练模式"
+            sub="AI 除了走棋，还会给你讲棋。"
+            on={coach.enabled}
+            onChange={(value) => updateCoach({ enabled: value })}
+          />
+          {coach.enabled && (
+            <div className="coach-block-body">
+              {COACH_OPTIONS.map((option) => (
+                <Switch
+                  key={option.key}
+                  title={option.label}
+                  sub={option.sub}
+                  on={coach[option.key]}
+                  onChange={(value) => updateCoachOption(option.key, value)}
+                />
+              ))}
+              <label className="field">
+                <span className="field-label">教练配置</span>
+                <select
+                  className="select"
+                  value={coach.profileId}
+                  onChange={(event) => updateCoach({ profileId: event.target.value })}
+                >
+                  <option value="">自动</option>
+                  {settings.aiProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} · {profile.config.model}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-hint">
+                  教练将使用：{coachPick.name} · {coachPick.config.model || '未设置模型'}。
+                  「自动」会跟随对手 AI，没有 AI 时自动选择。
+                </span>
+              </label>
+              <span className="field-hint">
+                思维链与自己的着法解释只对 AI 一方生效；点评在 AI 对 AI 时不出现。
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <p className="section-title">起始局面</p>

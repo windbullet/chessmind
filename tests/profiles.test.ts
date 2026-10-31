@@ -77,3 +77,53 @@ describe('settings migration', () => {
     expect(settings.aiProfiles[1].config.protocol).toBe('anthropic');
   });
 });
+
+describe('coach settings', () => {
+  it('starts switched off with every option ready', () => {
+    const settings = sanitizeSettings(null);
+    expect(settings.coach.enabled).toBe(false);
+    expect(settings.coach.showReasoning).toBe(true);
+    expect(settings.coach.ownMoves).toBe(true);
+    expect(settings.coach.opponentMoves).toBe(true);
+    expect(settings.coach.position).toBe(true);
+    expect(settings.coach.hint).toBe(true);
+    expect(settings.coach.summary).toBe(true);
+    expect(settings.coach.profileId).toBe('');
+  });
+
+  it('keeps a saved selection and every switch', () => {
+    const settings = sanitizeSettings({
+      aiProfiles: [profile('a', 'A'), profile('b', 'B')],
+      coach: { enabled: true, opponentMoves: false, profileId: 'b' },
+    });
+    expect(settings.coach.enabled).toBe(true);
+    expect(settings.coach.opponentMoves).toBe(false);
+    expect(settings.coach.position).toBe(true);
+    expect(settings.coach.profileId).toBe('b');
+  });
+
+  it('drops a coach profile that no longer exists', () => {
+    const settings = sanitizeSettings({
+      aiProfiles: [profile('a', 'A')],
+      coach: { enabled: true, profileId: 'gone' },
+    });
+    expect(settings.coach.profileId).toBe('');
+  });
+
+  it('ignores the switches that moved out of the settings page', () => {
+    const settings = sanitizeSettings({
+      ui: { showReasoning: false, commentaryEnabled: false, commentaryLang: 'ja' },
+    });
+    // Coach mode is off, so nothing is requested either way.
+    expect(settings.coach.enabled).toBe(false);
+    expect(settings.coach.ownMoves).toBe(true);
+    expect(settings.ui.commentaryLang).toBe('ja');
+    expect(settings.ui).not.toHaveProperty('showReasoning');
+    expect(settings.ui).not.toHaveProperty('commentaryEnabled');
+  });
+
+  it('discards unknown coach keys', () => {
+    const settings = sanitizeSettings({ coach: { enabled: true, nonsense: 1 } });
+    expect(settings.coach).not.toHaveProperty('nonsense');
+  });
+});

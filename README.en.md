@@ -14,6 +14,7 @@ Play chess against large language models.
 
 - **Compatible APIs**: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, native Gemini API.
 - **Four game modes**: play White, play Black, AI vs AI, local two-player.
+- **Coach mode**: per game, pick any of chain of thought, own-move explanations, per-move critique, position reads, on-demand guidance and a final review, with its own model.
 - **Live reasoning**: shows the model's chain of thought when the provider returns it, with per-move latency, HTTP status and token usage.
 - **Position editor**: set up a position before the game or edit it mid-game, with FEN import and export.
 - **Multiple profiles**: save several API profiles; in AI vs AI each side can run a different model.
@@ -25,15 +26,15 @@ Get either build from [Releases](../../releases); both are identical in features
 
 | File | Use case |
 | --- | --- |
-| `ChessMind-1.0.0-win-x64-setup.exe` | One-click installer |
-| `ChessMind-1.0.0-win-x64.zip` | Portable archive, unpack and run |
+| `ChessMind-1.1.0-win-x64-setup.exe` | One-click installer |
+| `ChessMind-1.1.0-win-x64.zip` | Portable archive, unpack and run |
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 Each file ships with a matching `.sha256`:
 
 ```powershell
-Get-FileHash .\ChessMind-1.0.0-win-x64.zip -Algorithm SHA256
+Get-FileHash .\ChessMind-1.1.0-win-x64.zip -Algorithm SHA256
 ```
 
 **Requirements**: Windows 10 1803+ or Windows 11, with the WebView2 runtime (normally already present).
@@ -69,6 +70,7 @@ Self-signed gateways can enable "ignore certificate errors"; gateways that need 
 | --- | --- |
 | `F` | Flip the board |
 | `U` | Take back a move |
+| `H` | Ask the coach for guidance (coach mode) |
 | `Space` | Pause / resume |
 | `1`–`6` | Pick a piece type in the editor |
 | `W` / `B` | Switch to White / Black pieces in the editor |
@@ -105,6 +107,7 @@ With the dev server running, visit `http://127.0.0.1:1420/smoke.html` for an end
 - **Strict contract plus three-stage parsing**: the model replies with JSON; parsing tries the fields, then UCI coordinates, then SAN tokens; if nothing is legal, the reason and the legal moves are sent again.
 - **Race protection**: takeback, pause, end and position edits invalidate in-flight requests immediately, so a stale move never lands on a new position.
 - **Optional context**: continuous context lets the model follow through on its own plan and hit the provider's prefix cache; per-move context re-reasons from the current position every time.
+- **Coach kept apart from play**: the coach is a separate request sent after the move lands, so it never enters the playing conversation and can never influence the move that was just chosen.
 
 ## Credits
 
